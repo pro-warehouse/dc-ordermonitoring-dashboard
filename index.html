@@ -3253,139 +3253,75 @@ function importSettings(input){
     function openMasterDbModal(){ document.getElementById('masterDbModal').style.display='flex'; }
     function closeMasterDbModal(){ document.getElementById('masterDbModal').style.display='none'; }
     
-    function captureCard(cardId, name) {
-  let card = document.getElementById(cardId);
-  if (!card) return;
-
-  Swal.fire({
-    title: '📸 กำลังเตรียมภาพ...',
-    allowOutsideClick: false,
-    didOpen: () => Swal.showLoading()
-  });
-
-  setTimeout(() => {
-    try {
-      let clone = card.cloneNode(true);
-      let isDark = document.documentElement.classList.contains('dark');
-
-      // 1. กำหนดความกว้างให้เท่ากับขนาดของ Card จริงๆ บนหน้าจอ
-      let exactWidth = card.offsetWidth;
-
-      // ปลดล็อกคลาสที่ใช้จัดการ Layout (flex) ที่จะทำให้ยุบตัวเมื่อหลุดจากกรอบเดิม
-      clone.classList.remove('flex-1', 'h-[380px]', 'min-h-0', 'max-h-[220px]');
-      
-      clone.style.cssText = `
-        position: absolute; 
-        top: -9999px; 
-        left: 0; 
-        width: ${exactWidth}px !important; 
-        height: auto !important; 
-        z-index: -1; 
-        background: ${isDark ? '#161b22' : '#ffffff'};
-      `;
-
-      // 2. ปลดล็อก scroll ให้ตารางยืดออกตามข้อมูลจริง (จะได้แคปติดครบทุกบรรทัด)
-      let scrollAreas = clone.querySelectorAll('.overflow-y-auto, .overflow-auto, .overflow-x-auto');
-      scrollAreas.forEach(el => {
-        el.style.setProperty('overflow', 'visible', 'important');
-        el.style.setProperty('max-height', 'none', 'important');
-        el.style.setProperty('height', 'auto', 'important');
-      });
-
-      let sumPanels = clone.querySelectorAll('.sum-panel');
-      sumPanels.forEach(p => p.style.setProperty('max-height', 'none', 'important'));
-
-      // 3. แทรก Date Header (แสดงรอบสั่ง/รอบหยิบ/รอบส่ง)
-      let stage = 'estimated';
-      if (cardId.startsWith('ac') || cardId === 'act-det-card') stage = 'actual';
-      if (cardId.startsWith('mon')) stage = 'monitoring';
-
-      let valOD = "-", valPD = "-", valDD = "-";
-      if (stage === 'estimated') {
-          valOD = document.getElementById('inputOrderDate')?.value || "-";
-          valPD = document.getElementById('inputPickDate')?.value || "-";
-          valDD = document.getElementById('inputDeliveryDate')?.value || "-";
-      } else if (stage === 'actual') {
-          valPD = document.getElementById('actPickDate')?.value || "-";
-          valOD = (actualProcessedData && actualProcessedData.length > 0) ? actualProcessedData[0].oD || "-" : "-";
-          valDD = (actualProcessedData && actualProcessedData.length > 0) ? actualProcessedData[0].dD || "-" : "-";
-      } else if (stage === 'monitoring') {
-          valOD = document.getElementById('monOrderDate')?.value || "-";
-          valPD = document.getElementById('monPickDate')?.value || "-";
-          valDD = document.getElementById('monDeliveryDate')?.value || "-";
-      }
-
-      let headerDiv = document.createElement('div');
-      headerDiv.style.cssText = `background:${isDark ? '#1c2433' : '#f0f4f7'}; padding:12px 16px; border-bottom:1px solid ${isDark ? '#2d3a4e' : '#e2eaf0'}; display:flex; gap:20px; font-size:12px; font-family:'IBM Plex Sans Thai', sans-serif; color:${isDark ? '#e6edf3' : '#3d5166'}; justify-content:center; align-items:center; border-top-left-radius: 12px; border-top-right-radius: 12px;`;
-      headerDiv.innerHTML = `
-         <div><span style="color:#95afc0;font-weight:700;margin-right:6px;text-transform:uppercase;">รอบสั่ง:</span><span style="color:#7c3aed;font-weight:600;font-family:'IBM Plex Mono',monospace;font-size:13px;">${valOD}</span></div>
-         <div><span style="color:#95afc0;font-weight:700;margin-right:6px;text-transform:uppercase;">รอบหยิบ:</span><span style="color:#d97706;font-weight:600;font-family:'IBM Plex Mono',monospace;font-size:13px;">${valPD}</span></div>
-         <div><span style="color:#95afc0;font-weight:700;margin-right:6px;text-transform:uppercase;">รอบส่ง:</span><span style="color:#15b87a;font-weight:600;font-family:'IBM Plex Mono',monospace;font-size:13px;">${valDD}</span></div>
-      `;
-      clone.insertBefore(headerDiv, clone.firstChild);
-
-      // แปะ Clone ลงไปใน Body
-      document.body.appendChild(clone);
-
-      // 4. วาด Canvas กราฟทับลงไป
-      let originalCanvases = card.querySelectorAll('canvas');
-      let clonedCanvases = clone.querySelectorAll('canvas');
-      originalCanvases.forEach((canvas, index) => {
-        if (clonedCanvases[index]) {
-          let ctx = clonedCanvases[index].getContext('2d');
-          clonedCanvases[index].width = canvas.width;
-          clonedCanvases[index].height = canvas.height;
-          ctx.drawImage(canvas, 0, 0);
-        }
-      });
-      
-      // หน่วงเวลาให้ CSS ทำงานเต็มที่ก่อนถ่ายรูป
-      setTimeout(() => {
-        let w = clone.scrollWidth;
-        let h = clone.scrollHeight;
-
-        html2canvas(clone, {
-          scale: 2, // เพิ่มความคมชัด
-          backgroundColor: isDark ? '#161b22' : '#ffffff', 
-          useCORS: true,
-          width: w,
-          height: h,
-          windowWidth: w,
-          windowHeight: h,
-          logging: false
-        }).then(c => {
-          document.body.removeChild(clone);
-          
-          // ⭐ จุดสำคัญที่แก้ปัญหาภาพพัง: ใช้ toBlob แทน toDataURL
-          c.toBlob((blob) => {
-            if (!blob) {
-              Swal.fire('Error', 'ไม่สามารถสร้างข้อมูลรูปภาพได้ (Canvas ว่างเปล่า)', 'error');
-              return;
-            }
-            let url = window.URL.createObjectURL(blob);
-            let link = document.createElement('a');
-            link.download = name + '.png';
-            link.href = url;
-            link.click();
-            
-            // ล้างหน่วยความจำ
-            setTimeout(() => window.URL.revokeObjectURL(url), 1000);
-            Swal.close();
-          }, 'image/png');
-
-        }).catch(err => {
-          if (document.body.contains(clone)) document.body.removeChild(clone);
-          console.error("html2canvas Error:", err);
-          Swal.fire('Error', 'สร้างรูปภาพไม่สำเร็จ: ' + err.message, 'error');
+    function captureCard(cardId,name){
+      let card=document.getElementById(cardId); if(!card) return;
+      Swal.fire({title:'📸 กำลังเตรียมภาพ...',allowOutsideClick:false,didOpen:()=>Swal.showLoading()});
+      setTimeout(()=>{
+        let clone=card.cloneNode(true);
+        
+        clone.style.cssText=`position:fixed;top:-10000px;left:0;width:max-content !important; min-width:${card.offsetWidth}px; height:auto !important;max-height:none !important;z-index:-1;overflow:visible !important;`;
+        clone.classList.remove('max-h-[220px]', 'flex-1'); 
+        
+        let scrollAreas = clone.querySelectorAll('.overflow-y-auto, .overflow-auto, .overflow-x-auto');
+        scrollAreas.forEach(el => {
+          el.style.cssText += 'overflow: visible !important; max-height: none !important; max-width: none !important; height: auto !important; width: auto !important;';
+          el.classList.remove('overflow-y-auto', 'overflow-auto', 'overflow-x-auto', 'flex-1');
         });
-      }, 300);
-
-    } catch (err) {
-      console.error(err);
-      Swal.fire('Error', 'เกิดข้อผิดพลาดในการรวบรวมข้อมูลภาพ', 'error');
+    
+        let sumPanels = clone.querySelectorAll('.sum-panel');
+        sumPanels.forEach(p => {
+          p.classList.remove('max-h-[220px]');
+          p.style.cssText += 'max-height: none !important; height: auto !important;';
+        });
+    
+        let tableHeaders = clone.querySelectorAll('th');
+        tableHeaders.forEach(th => {
+          th.style.setProperty('position', 'static', 'important');
+        });
+    
+        let stage = 'estimated';
+        if (cardId.startsWith('ac') || cardId === 'act-det-card') stage = 'actual';
+        if (cardId.startsWith('mon')) stage = 'monitoring';
+    
+        let valOD = "-", valPD = "-", valDD = "-";
+        if (stage === 'estimated') {
+            valOD = document.getElementById('inputOrderDate')?.value || "-";
+            valPD = document.getElementById('inputPickDate')?.value || "-";
+            valDD = document.getElementById('inputDeliveryDate')?.value || "-";
+        } else if (stage === 'actual') {
+            valPD = document.getElementById('actPickDate')?.value || "-";
+            valOD = (actualProcessedData && actualProcessedData.length > 0) ? actualProcessedData[0].oD || "-" : "-";
+            valDD = (actualProcessedData && actualProcessedData.length > 0) ? actualProcessedData[0].dD || "-" : "-";
+        } else if (stage === 'monitoring') {
+            valOD = document.getElementById('monOrderDate')?.value || "-";
+            valPD = document.getElementById('monPickDate')?.value || "-";
+            valDD = document.getElementById('monDeliveryDate')?.value || "-";
+        }
+    
+        let isDark = document.documentElement.classList.contains('dark');
+        let headerDiv = document.createElement('div');
+        headerDiv.style.cssText = `background:${isDark ? '#1c2433' : '#f0f4f7'}; padding:8px 16px; border-bottom:1px solid ${isDark ? '#2d3a4e' : '#e2eaf0'}; display:flex; gap:20px; font-size:11px; font-family:'IBM Plex Sans Thai', sans-serif; color:${isDark ? '#e6edf3' : '#3d5166'}; justify-content:center; align-items:center; border-top-left-radius: 10px; border-top-right-radius: 10px;`;
+        
+        let dateHtml = `
+           <div><span style="color:#95afc0;font-weight:700;margin-right:6px;text-transform:uppercase;">รอบสั่ง:</span><span style="color:#7c3aed;font-weight:600;font-family:'IBM Plex Mono',monospace;font-size:12px;">${valOD}</span></div>
+           <div><span style="color:#95afc0;font-weight:700;margin-right:6px;text-transform:uppercase;">รอบหยิบ:</span><span style="color:#d97706;font-weight:600;font-family:'IBM Plex Mono',monospace;font-size:12px;">${valPD}</span></div>
+           <div><span style="color:#95afc0;font-weight:700;margin-right:6px;text-transform:uppercase;">รอบส่ง:</span><span style="color:#15b87a;font-weight:600;font-family:'IBM Plex Mono',monospace;font-size:12px;">${valDD}</span></div>
+        `;
+        headerDiv.innerHTML = dateHtml;
+        clone.insertBefore(headerDiv, clone.firstChild);
+    
+        document.body.appendChild(clone);
+        
+        html2canvas(clone,{
+          scale:2, backgroundColor:isDark?'#161b22':'#ffffff', useCORS:true,
+          width: clone.scrollWidth, height: clone.scrollHeight
+        }).then(c=>{
+          document.body.removeChild(clone);
+          let l=document.createElement('a'); l.download=name+'.png'; l.href=c.toDataURL('image/png'); l.click();
+          Swal.close();
+        });
+      },500);
     }
-  }, 300);
-}
     
     // 🚀 ยิง API พร้อมกันทุกเส้นด้วย Promise.all แก้ปัญหาโหลดช้า
     window.onload = async function() {
